@@ -1,0 +1,127 @@
+from __future__ import print_function
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.datasets import mnist
+# from keras.models import Sequential
+# from keras.layers import Dense, Dropout, Flatten
+# from keras.layers import Conv2D, MaxPooling2D
+from tensorflow.keras import backend as K
+
+# from keras.datasets import mnist
+# from keras.utils import np_utils
+# from keras.models import Sequential
+# from keras.layers.core import Dense, Dropout, Activation, Flatten
+# from keras.layers.convolutional import Conv2D, MaxPooling2D, AveragePooling2D,ZeroPadding2D
+# from keras.layers.normalization import BatchNormalization
+
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+    try:
+        # Currently, memory growth needs to be the same across GPUs
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+    except RuntimeError as e:
+        # Memory growth must be set before GPUs have been initialized
+        print(e)
+
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+'''导入数据 改变形状 归一化 独热编码'''
+batch_size = 128
+num_classes = 10
+epochs = 12
+
+# input image dimensions
+img_rows, img_cols = 28, 28
+
+(x_train, y_train), (x_test, y_test) = mnist.load_data() #第一个元组储存训练好的图片和对应标签,第二个元组是未分类图片
+
+if K.image_data_format() == 'channels_first':
+    x_train = x_train.reshape(x_train.shape[0], 1, img_rows, img_cols)
+    x_test = x_test.reshape(x_test.shape[0], 1, img_rows, img_cols)
+    input_shape = (1, img_rows, img_cols)
+else:
+    x_train = x_train.reshape(x_train.shape[0], img_rows, img_cols, 1)
+    x_test = x_test.reshape(x_test.shape[0], img_rows, img_cols, 1)
+    input_shape = (img_rows, img_cols, 1)
+
+
+# 给定的像素的灰度值在0-255，为了使模型的训练效果更好，通常将数值归一化映射到0-1
+x_train = x_train.astype('float32')
+x_test = x_test.astype('float32')
+x_train /= 255
+x_test /= 255
+
+# # one hot encoding
+# y_train=tf.keras.utils.to_categorical(y_train,num_classes=10)
+# y_test=tf.keras.utils.to_categorical(y_test,num_classes=10)
+# convert class vectors to binary class matrices
+y_train = keras.utils.to_categorical(y_train, num_classes)
+y_test = keras.utils.to_categorical(y_test, num_classes)
+
+
+
+"""建立模型Alexnet
+输入层→(C1 卷积层→池化层)→(C2 卷积层→池化层)→C3 卷积层→C4 卷积层→(C5 池化层→池化层)→
+全连接层→全连接层→Output 全连接层。
+"""
+# Alexnet=Sequential()
+# Alexnet.add()
+inputs = keras.Input(shape=[28, 28, 1])
+# 第一层卷积层： 卷积核64个，大小11*11， 步长1，1 激活函数relu， padding same, 输入形状(28, 28, 1) 用偏置
+conv1 = keras.layers.Conv2D(filters=64, kernel_size=[11, 11], strides=[1, 1], activation='relu',
+                            use_bias=True, padding='same')(inputs)
+pooling1 = keras.layers.AveragePooling2D(pool_size=[2, 2], strides=[2, 2], padding='valid')(conv1)
+stand1 = keras.layers.BatchNormalization(axis=1)(pooling1)
+
+# 第二层卷积层 卷积核192， 大小5*5， 激活函数relu
+conv2 = keras.layers.Conv2D(filters=192, kernel_size=[5, 5], strides=[1, 1], activation='relu',
+                            use_bias=True, padding='same')(stand1)
+pooling2 = keras.layers.AveragePooling2D(pool_size=[2, 2], strides=[2, 2], padding='valid')(conv2)
+stand2 = keras.layers.BatchNormalization(axis=1)(pooling2)
+
+# 第三层卷积层 卷积核384， 大小3*3， 激活函数relu
+conv3 = keras.layers.Conv2D(filters=384, kernel_size=[3, 3], strides=[1, 1], activation='relu',
+                            use_bias=True, padding='same')(stand2)
+stand3 = keras.layers.BatchNormalization(axis=1)(conv3)
+
+# 第四层卷积层 卷积核384， 大小3*3， 激活函数relu
+conv4 = keras.layers.Conv2D(filters=384, kernel_size=[3, 3], strides=[1, 1], activation='relu',
+                            use_bias=True, padding='same')(stand3)
+stand4 = keras.layers.BatchNormalization(axis=1)(conv4)
+
+# 第五层卷积层
+conv5 = keras.layers.Conv2D(filters=256, kernel_size=[3, 3], strides=[1, 1], activation='relu',
+                            use_bias=True, padding='same')(stand4)
+pooling5 = keras.layers.AveragePooling2D(pool_size=[2, 2], strides=[2, 2], padding='valid')(conv5)
+stand5 = keras.layers.BatchNormalization(axis=1)(pooling5)
+
+# 第六层 flatten
+flatten = keras.layers.Flatten()(stand5)
+fc1 = keras.layers.Dense(4096, activation=keras.activations.relu, use_bias=True)(flatten)
+drop1 = keras.layers.Dropout(0.5)(fc1)
+
+fc2 = keras.layers.Dense(4096, activation=keras.activations.relu, use_bias=True)(drop1)
+drop2 = keras.layers.Dropout(0.5)(fc2)
+
+fc3 = keras.layers.Dense(10, activation=keras.activations.softmax, use_bias=True)(drop2)
+
+# 基于Model方法构建模型
+alexnet = keras.Model(inputs=inputs, outputs=fc3)
+# 编译模型
+alexnet.compile(optimizer='adam',loss='categorical_crossentropy',metrics=['accuracy'])
+
+# 训练模型
+# 配置参数
+batch_size = 64
+num_classes = 10
+epochs = 10
+alexnet.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, verbose=2, validation_data=(x_test, y_test))
+
+# 对结果进行评估
+score = alexnet.evaluate(x_test, y_test)
+print('Loss： %.4lf' % score[0])
+print('Accuracy: ', score[1])

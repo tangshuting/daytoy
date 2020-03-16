@@ -1,0 +1,59 @@
+#相关库的导入
+#import numpy as np #通过随机种子，可以得到一组有规律的随机数，而随机种子就是这个随机数的初始值。随机种子相同，得到的随机数一定也相同。
+from keras.datasets import mnist   #从keras的datasets导入mnist数据集
+from keras.models import Sequential  #导入Sequential模型，它是一系列网路层按顺序构成的栈
+from keras.layers.core import Dense, Dropout, Activation  #为输入数据施加dropout修正过拟合
+from keras.optimizers import SGD, Adam   #SGD算法
+from keras.utils import np_utils
+  #导入np_utils是为了用one hot encoding方法将输出标签的向量（vector）转化为只在出现对应标签的那一列为1，其余为0的布尔矩阵
+
+
+#数据准备
+#x shape (60000,28×28)，y shape (10000,)  未考虑将训练集另外划分出一些验证集（可降低过拟合发生的机率）
+#将数据集reshape，即将28*28的向量转成784长度的数组。可以用numpy的reshape函数轻松实现这个过程。
+#数据归一化，因为softmax函数的取值是0到1之间的，网络最后一个节点的输出也是如此，所以经常要对样本的输出归一化处理。
+(x_train, y_train), (x_test, y_test) = mnist.load_data() #第一个元组储存训练好的图片和对应标签,第二个元组是未分类图片
+x_train = x_train.reshape(60000, 28*28)
+x_test = x_test.reshape(10000, 28*28)
+#给定的像素的灰度值在0-255，为了使模型的训练效果更好，通常将数值归一化映射到0-1
+x_train = x_train / 255
+x_test = x_test / 255
+# one hot encoding
+y_train=np_utils.to_categorical(y_train,num_classes=10)
+y_test=np_utils.to_categorical(y_test,num_classes=10)
+
+#搭建三层网络
+model = Sequential()
+model.add(Dense(input_dim=28*28,units=500,activation='sigmoid')) #input_dim输入尺寸，units神经元个数，activation是激活函数
+model.add(Dropout(0.2))    # Dropout将在训练过程中每次更新参数时按一定概率（rate）随机断开输入神经元，Dropout层用于防止过拟合。
+model.add(Dense(units=400,activation='relu'))  #激活函数可以选择relu或sigmoid，relu的结果更准确,不存在梯度消失和梯度爆炸
+model.add(Dropout(0.2))
+model.add(Dense(units=10,activation='softmax'))
+
+
+#编译模型.complie()
+# loss损失函数，optimize优化器，采用了SGD并选择学习步长为0.1，还有可用ADMA，metrics是衡量指标，准确率
+#损失函数分类 mes(均方误差),categorical_crossentropy（交叉熵损失函数）
+model.compile(loss='mse',optimizer=SGD(lr=0.1),metrics=['accuracy'])
+#model.compile(loss='categorical_crossentropy',optimizer='adam',metrics=['accuracy'])
+
+#训练网络：在训练数据上按batch进行一定次数的迭代
+#x_train,y_train输入训练的数据和标签，epoch训练集的迭代次数，过高时会出现过拟合，batch_size从训练集中每次放入模型训练的数据个数
+# 配置参数
+batch_size = 64
+epochs = 10
+model.fit(x_train,y_train,batch_size=batch_size,epochs=epochs,verbose=2)  #迭代过程中显示训练的loss和acc在不断优化
+
+#迭代次数的大小：在后台生成的报表中选择，这样每次初始化都会有较好的结果。loss和accuracy会有
+#神经网络中的函数，提前结束，在你迭代次数达多少时，他的损失的绝对值（差值）小于你预设的阈值，就是默认效果达到你的理想值，就会自动停止。
+
+# 模型概括打印
+model.summary()
+#param=（输入尺寸28*28＋1）* units
+
+#对训练好的模型进行评估  （使用验证集评估训练集）
+#loss_and_metrics =model.evaluate(x_test,y_test,batch_size=128)
+result = model.evaluate(x_test,y_test,batch_size=128)
+print('Test loss:', result[0])    #设置一次迭代结束才输出一次loss和acc，不用每个batch都有过程
+print('Accuracy:', result[1])
+
